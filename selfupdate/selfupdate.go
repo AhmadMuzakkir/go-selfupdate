@@ -97,15 +97,15 @@ func (u *Updater) getExecRelativeDir(dir string) string {
 }
 
 // BackgroundRun starts the update check and apply cycle.
-func (u *Updater) BackgroundRun() error {
+func (u *Updater) BackgroundRun() (bool, error) {
 	if err := os.MkdirAll(u.getExecRelativeDir(u.Dir), 0777); err != nil {
 		// fail
-		return err
+		return false, err
 	}
 	if u.wantUpdate() {
 		if err := up.CanUpdate(); err != nil {
 			// fail
-			return err
+			return false, err
 		}
 		//self, err := osext.Executable()
 		//if err != nil {
@@ -113,11 +113,10 @@ func (u *Updater) BackgroundRun() error {
 		//return
 		//}
 		// TODO(bgentry): logger isn't on Windows. Replace w/ proper error reports.
-		if err := u.update(); err != nil {
-			return err
-		}
+
+		return u.update()
 	}
-	return nil
+	return false, nil
 }
 
 func (u *Updater) wantUpdate() bool {
@@ -129,23 +128,23 @@ func (u *Updater) wantUpdate() bool {
 	return writeTime(path, time.Now().Add(wait))
 }
 
-func (u *Updater) update() error {
+func (u *Updater) update() (bool, error) {
 	path, err := osext.Executable()
 	if err != nil {
-		return err
+		return false, err
 	}
 	old, err := os.Open(path)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer old.Close()
 
 	err = u.fetchInfo()
 	if err != nil {
-		return err
+		return false, err
 	}
 	if u.Info.Version == u.CurrentVersion {
-		return nil
+		return false, nil
 	}
 	bin, err := u.fetchAndVerifyPatch(old)
 	if err != nil {
@@ -164,7 +163,7 @@ func (u *Updater) update() error {
 			} else {
 				log.Println("update: fetching full binary,", err)
 			}
-			return err
+			return true, err
 		}
 	}
 
@@ -174,12 +173,12 @@ func (u *Updater) update() error {
 
 	err, errRecover := up.FromStream(bytes.NewBuffer(bin))
 	if errRecover != nil {
-		return fmt.Errorf("update and recovery errors: %q %q", err, errRecover)
+		return true, fmt.Errorf("update and recovery errors: %q %q", err, errRecover)
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
-	return nil
+	return true, nil
 }
 
 func (u *Updater) fetchInfo() error {
